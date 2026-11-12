@@ -35,13 +35,15 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 #s{width:44px;height:44px;border-radius:50%;border:0;background:#1f1e1d;color:#fff;font-size:20px}
 </style></head><body>
 <div id="log"><div id="hello"><img src="/logo.png" alt="">
-<h2>วันนี้อยากคุยเรื่องอะไรดี</h2></div></div>
+<h2 id="gh">วันนี้อยากคุยเรื่องอะไรดี</h2></div></div>
 <div id="bar"><form id="f">
 <input id="t" placeholder="คุยกับ BON..." autocomplete="off">
 <button id="s">↑</button></form></div>
 <script>
 const log=document.getElementById("log"),t=document.getElementById("t");
 let hist=[];
+const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
+document.getElementById("gh").textContent=G[Math.floor(Math.random()*G.length)];
 function add(c,x){const d=document.createElement("div");
 d.className="m "+c;d.textContent=x;log.appendChild(d);
 log.scrollTop=log.scrollHeight;return d}
