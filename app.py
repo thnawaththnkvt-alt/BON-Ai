@@ -1,5 +1,6 @@
 import os, time, requests
-from flask import Flask, request, jsonify, render_template_string
+from flask import (Flask, request, jsonify,
+                   render_template_string, send_file)
 
 app = Flask(__name__)
 KEY = os.environ["GROQ_KEY"]
@@ -14,9 +15,14 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BON Ai</title>
+<link rel="icon" href="/logo.png">
+<link rel="apple-touch-icon" href="/logo.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#222222">
 <style>
 body{font-family:sans-serif;margin:0;display:flex;flex-direction:column;height:100dvh}
-h1{margin:0;padding:12px;font-size:18px;background:#222;color:#fff}
+h1{margin:0;padding:10px 12px;font-size:18px;background:#222;color:#fff;display:flex;align-items:center;gap:10px}
+h1 img{height:32px;width:32px;border-radius:8px}
 #log{flex:1;overflow-y:auto;padding:12px}
 .m{margin:8px 0;padding:10px;border-radius:12px;max-width:85%;white-space:pre-wrap}
 .u{background:#d9ecff;margin-left:auto}
@@ -25,7 +31,7 @@ form{display:flex;gap:8px;padding:8px;border-top:1px solid #ccc}
 input{flex:1;padding:10px;font-size:16px}
 button{padding:10px 16px;font-size:16px}
 </style></head><body>
-<h1>BON Ai</h1>
+<h1><img src="/logo.png" alt=""> BON Ai</h1>
 <div id="log"></div>
 <form id="f"><input id="t" placeholder="พิมพ์ข้อความ..." autocomplete="off">
 <button>ส่ง</button></form>
@@ -54,6 +60,25 @@ if(r.ok)hist.push({role:"assistant",content:j.answer});
 @app.route("/")
 def home():
     return render_template_string(PAGE)
+
+
+@app.route("/logo.png")
+def logo():
+    return send_file("logo_bon.png")
+
+
+@app.route("/manifest.json")
+def manifest():
+    return jsonify(
+        name="BON Ai",
+        short_name="BON",
+        start_url="/",
+        display="standalone",
+        background_color="#222222",
+        theme_color="#222222",
+        icons=[{"src": "/logo.png", "sizes": "512x512",
+                "type": "image/png"}],
+    )
 
 
 @app.route("/chat", methods=["POST"])
