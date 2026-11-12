@@ -14,7 +14,7 @@ URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
 SYSTEM = "คุณชื่อ BON จริงจัง ตอบตรงๆ ฉลาด สรุปเป็นข้อ สั้นแต่ได้ใจความ ตอบเป็นภาษาไทยเสมอ ยกเว้นผู้ใช้ขอภาษาอื่น"
-LIMIT = 50  # ข้อความต่อคนต่อวัน
+LIMIT = 100 # ข้อความต่อคนต่อวัน
 FILE_CHARS = 5000  # ตัวอักษรจากไฟล์ที่ส่งให้บอท
 usage = {}
 
