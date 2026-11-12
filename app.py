@@ -24,7 +24,8 @@ h1{margin:0;padding:12px;font-size:18px;background:#222;color:#fff}
 form{display:flex;gap:8px;padding:8px;border-top:1px solid #ccc}
 input{flex:1;padding:10px;font-size:16px}
 button{padding:10px 16px;font-size:16px}
-</style></head><body><img src="/IMG_20261112_205250.jpg" width="80" style="border-radius: 50%;">
+<img src="https://raw.githubusercontent.com/thnawaththnkvt-alt/BON-Ai/refs/heads/main/IMG_20261112_205250.jpg" width="80" style="border-radius: 50%;">
+
 
 
 <h1>BON Ai</h1>
