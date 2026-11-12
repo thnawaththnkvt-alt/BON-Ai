@@ -26,7 +26,8 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 #hello{margin:auto;text-align:center;padding-bottom:60px}
 #hello img{width:72px;height:72px;border-radius:18px}
 #hello h2{font-weight:400;font-size:26px;margin:18px 0 0}
-.m{margin:10px 0;line-height:1.55;white-space:pre-wrap;max-width:88%}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.m{margin:10px 0;line-height:1.55;white-space:pre-wrap;max-width:88%;animation:fade .35s ease}
 .u{align-self:flex-end;background:#efede8;padding:10px 14px;border-radius:18px}
 .a{align-self:flex-start}
 #bar{padding:8px 12px calc(12px + env(safe-area-inset-bottom))}
@@ -44,6 +45,13 @@ const log=document.getElementById("log"),t=document.getElementById("t");
 let hist=[];
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 document.getElementById("gh").textContent=G[Math.floor(Math.random()*G.length)];
+function typeOut(el,s){return new Promise(res=>{
+const a=Array.from(s);let i=0;el.textContent="";
+const step=Math.max(1,Math.ceil(a.length/150));
+const id=setInterval(()=>{i+=step;
+el.textContent=a.slice(0,i).join("");
+log.scrollTop=log.scrollHeight;
+if(i>=a.length){clearInterval(id);res()}},20)})}
 function add(c,x){const d=document.createElement("div");
 d.className="m "+c;d.textContent=x;log.appendChild(d);
 log.scrollTop=log.scrollHeight;return d}
@@ -57,7 +65,7 @@ const r=await fetch("/chat",{method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({messages:hist.slice(-10)})});
 const j=await r.json();
-w.textContent=j.answer;
+await typeOut(w,j.answer);
 if(r.ok)hist.push({role:"assistant",content:j.answer});
 }catch(err){w.textContent="เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง"}
 log.scrollTop=log.scrollHeight;
