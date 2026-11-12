@@ -13,28 +13,32 @@ usage = {}
 PAGE = """<!doctype html>
 <html lang="th"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>BON Ai</title>
 <link rel="icon" href="/logo.png">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#222222">
+<meta name="theme-color" content="#f9f8f6">
 <style>
-body{font-family:sans-serif;margin:0;display:flex;flex-direction:column;height:100dvh}
-h1{margin:0;padding:10px 12px;font-size:18px;background:#222;color:#fff;display:flex;align-items:center;gap:10px}
-h1 img{height:32px;width:32px;border-radius:8px}
-#log{flex:1;overflow-y:auto;padding:12px}
-.m{margin:8px 0;padding:10px;border-radius:12px;max-width:85%;white-space:pre-wrap}
-.u{background:#d9ecff;margin-left:auto}
-.a{background:#eee}
-form{display:flex;gap:8px;padding:8px;border-top:1px solid #ccc}
-input{flex:1;padding:10px;font-size:16px}
-button{padding:10px 16px;font-size:16px}
+*{box-sizing:border-box}
+body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:flex;flex-direction:column;height:100dvh}
+#log{flex:1;overflow-y:auto;padding:20px 16px 8px;display:flex;flex-direction:column}
+#hello{margin:auto;text-align:center;padding-bottom:60px}
+#hello img{width:72px;height:72px;border-radius:18px}
+#hello h2{font-weight:400;font-size:26px;margin:18px 0 0}
+.m{margin:10px 0;line-height:1.55;white-space:pre-wrap;max-width:88%}
+.u{align-self:flex-end;background:#efede8;padding:10px 14px;border-radius:18px}
+.a{align-self:flex-start}
+#bar{padding:8px 12px calc(12px + env(safe-area-inset-bottom))}
+#f{display:flex;align-items:center;gap:8px;background:#fff;border-radius:28px;padding:8px 8px 8px 18px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+#t{flex:1;border:0;outline:0;font-size:16px;background:transparent;padding:8px 0;min-width:0}
+#s{width:44px;height:44px;border-radius:50%;border:0;background:#1f1e1d;color:#fff;font-size:20px}
 </style></head><body>
-<h1><img src="/logo.png" alt=""> BON Ai</h1>
-<div id="log"></div>
-<form id="f"><input id="t" placeholder="พิมพ์ข้อความ..." autocomplete="off">
-<button>ส่ง</button></form>
+<div id="log"><div id="hello"><img src="/logo.png" alt="">
+<h2>วันนี้อยากคุยเรื่องอะไรดี</h2></div></div>
+<div id="bar"><form id="f">
+<input id="t" placeholder="คุยกับ BON..." autocomplete="off">
+<button id="s">↑</button></form></div>
 <script>
 const log=document.getElementById("log"),t=document.getElementById("t");
 let hist=[];
@@ -43,6 +47,7 @@ d.className="m "+c;d.textContent=x;log.appendChild(d);
 log.scrollTop=log.scrollHeight;return d}
 document.getElementById("f").onsubmit=async e=>{
 e.preventDefault();const x=t.value.trim();if(!x)return;t.value="";
+const h=document.getElementById("hello");if(h)h.remove();
 add("u",x);hist.push({role:"user",content:x});
 const w=add("a","...");
 try{
@@ -53,6 +58,7 @@ const j=await r.json();
 w.textContent=j.answer;
 if(r.ok)hist.push({role:"assistant",content:j.answer});
 }catch(err){w.textContent="เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง"}
+log.scrollTop=log.scrollHeight;
 };
 </script></body></html>"""
 
@@ -74,8 +80,8 @@ def manifest():
         short_name="BON",
         start_url="/",
         display="standalone",
-        background_color="#222222",
-        theme_color="#222222",
+        background_color="#f9f8f6",
+        theme_color="#f9f8f6",
         icons=[{"src": "/logo.png", "sizes": "512x512",
                 "type": "image/png"}],
     )
