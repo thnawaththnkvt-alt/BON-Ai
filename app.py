@@ -14,7 +14,7 @@ URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
 SYSTEM = "คุณชื่อ BON จริงจัง ตอบตรงๆ ฉลาด สรุปเป็นข้อ สั้นแต่ได้ใจความ ตอบเป็นภาษาไทยเสมอ ยกเว้นผู้ใช้ขอภาษาอื่น"
-LIMIT = 100 # ข้อความต่อคนต่อวัน
+LIMIT = 50  # ข้อความต่อคนต่อวัน
 FILE_CHARS = 5000  # ตัวอักษรจากไฟล์ที่ส่งให้บอท
 usage = {}
 
@@ -44,9 +44,11 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 #pv img{height:56px;border-radius:10px}
 #pv button{border:0;background:#1f1e1d;color:#fff;border-radius:50%;width:24px;height:24px}
 #bar{padding:8px 12px calc(12px + env(safe-area-inset-bottom))}
-#f{display:flex;align-items:center;gap:8px;background:#fff;border-radius:28px;padding:8px 8px 8px 8px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+#f{display:flex;align-items:center;gap:6px;background:#fff;border-radius:28px;padding:8px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
 #clip{width:40px;height:40px;border-radius:50%;border:0;background:#efede8;color:#1f1e1d;font-size:24px;line-height:1}
-#t{flex:1;border:0;outline:0;font-size:16px;background:transparent;padding:8px 0;min-width:0}
+#mic{width:40px;height:40px;border-radius:50%;border:0;background:#efede8;font-size:18px;line-height:1}
+#mic.on{background:#e5484d}
+#t{flex:1;border:0;outline:0;font-size:16px;background:transparent;padding:8px 4px;min-width:0}
 #s{width:44px;height:44px;border-radius:50%;border:0;background:#1f1e1d;color:#fff;font-size:20px}
 </style></head><body>
 <div id="log"><div id="hello"><img src="/logo.png" alt="">
@@ -56,6 +58,7 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 <button type="button" id="clip">+</button>
 <input type="file" id="fi" accept="image/*,.pdf,.txt,.md,.csv,.json,.py,.html,.js,.log" hidden>
 <input id="t" placeholder="คุยกับ BON..." autocomplete="off">
+<button type="button" id="mic">🎤</button>
 <button id="s">↑</button></form></div>
 <script>
 const log=document.getElementById("log"),t=document.getElementById("t");
@@ -119,6 +122,20 @@ rd.onload=()=>{pending=null;
 pfile={name:f.name,text:String(rd.result).slice(0,8000)};showPv()};
 rd.readAsText(f)}
 fi.value=""};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const mic=document.getElementById("mic");
+let rec=null,listening=false;
+if(!SR){mic.style.display="none"}
+else{
+mic.onclick=()=>{
+if(listening){rec.stop();return}
+rec=new SR();rec.lang="th-TH";rec.interimResults=true;rec.continuous=false;
+const base=t.value?t.value+" ":"";
+rec.onstart=()=>{listening=true;mic.classList.add("on")};
+rec.onresult=e=>{let s="";for(const r of e.results)s+=r[0].transcript;t.value=base+s};
+rec.onerror=e=>{if(e.error==="not-allowed")alert("ต้องอนุญาตให้ใช้ไมโครโฟน")};
+rec.onend=()=>{listening=false;mic.classList.remove("on");t.focus()};
+rec.start()}}
 document.getElementById("f").onsubmit=async e=>{
 e.preventDefault();
 let x=t.value.trim();if(!x&&!pending&&!pfile)return;
