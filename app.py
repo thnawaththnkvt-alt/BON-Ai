@@ -1,6 +1,6 @@
-import os, io, re, time, base64, requests
-from flask import (Flask, request, jsonify,
-                   render_template_string, send_file)
+import os, io, re, time, json, base64, requests
+from datetime import datetime, timezone, timedelta
+from flask import Flask, request, jsonify, send_file, Response
 
 try:
     from pypdf import PdfReader
@@ -15,12 +15,22 @@ URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
 SYSTEM = "คุณชื่อ BON จริงจัง ตอบตรงๆ ฉลาด สรุปเป็นข้อ สั้นแต่ได้ใจความ ตอบเป็นภาษาไทยเสมอ ยกเว้นผู้ใช้ขอภาษาอื่น"
-LIMIT = 100 # ข้อความต่อคนต่อวัน
+LIMIT = 100  # ข้อความต่อคนต่อวัน
 WEB_LIMIT = 15  # ครั้งค้นเว็บต่อคนต่อวัน
 FILE_CHARS = 5000  # ตัวอักษรจากไฟล์ที่ส่งให้บอท
 usage = {}
+TH = timezone(timedelta(hours=7))
 
-PAGE = """<!doctype html>
+
+def now_th():
+    return datetime.now(TH).strftime("%d/%m/%Y %H:%M")
+
+
+def ev(**k):
+    return json.dumps(k, ensure_ascii=False) + "\n"
+
+
+PAGE = r"""<!doctype html>
 <html lang="th"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -37,25 +47,30 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 #hello img{width:72px;height:72px;border-radius:18px}
 #hello h2{font-weight:400;font-size:26px;margin:18px 0 0}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.m{margin:10px 0;line-height:1.55;white-space:pre-wrap;max-width:88%;animation:fade .35s ease}
-.u{align-self:flex-end;background:#efede8;padding:10px 14px;border-radius:18px}
+.m{margin:10px 0;line-height:1.55;white-space:pre-wrap;max-width:92%;animation:fade .35s ease}
+.u{align-self:flex-end;background:#efede8;padding:10px 14px;border-radius:18px;max-width:88%}
 .a{align-self:flex-start}
 .pic{display:block;max-width:100%;max-height:220px;border-radius:12px;margin-bottom:6px}
 .fn{font-size:13px;opacity:.7;margin-bottom:4px}
-.src{align-self:flex-start;font-size:13px;margin:-4px 0 10px;max-width:88%;line-height:1.6}
-.src a{display:block;color:#2f6fdb;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live{display:none;font-size:13px;color:#555;margin-bottom:8px;white-space:normal;line-height:1.6}
+.live .lq{font-weight:bold;margin-bottom:2px}
+.live a{display:block;color:#2f6fdb;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;animation:fade .35s ease}
+.th{display:none;font-size:13px;color:#666;margin-bottom:8px;white-space:normal}
+.th summary{cursor:pointer}
+.tb{white-space:pre-wrap;max-height:160px;overflow:auto;margin-top:6px;padding:8px;background:#efede8;border-radius:10px;line-height:1.45}
 #pv{display:none;gap:8px;align-items:center;padding:0 16px 4px;font-size:14px}
 #pv img{height:56px;border-radius:10px}
 #pv button{border:0;background:#1f1e1d;color:#fff;border-radius:50%;width:24px;height:24px}
-#bar{padding:8px 12px calc(12px + env(safe-area-inset-bottom))}
-#f{display:flex;align-items:center;gap:6px;background:#fff;border-radius:28px;padding:8px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
-#clip,#web,#mic{width:40px;height:40px;border-radius:50%;border:0;background:#efede8;color:#1f1e1d;line-height:1}
-#clip{font-size:24px}
-#web,#mic{font-size:18px}
+#bar{padding:8px 10px calc(12px + env(safe-area-inset-bottom))}
+#f{display:flex;align-items:center;gap:4px;background:#fff;border-radius:28px;padding:6px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+#clip,#web,#think,#mic{width:36px;height:36px;border-radius:50%;border:0;background:#efede8;color:#1f1e1d;line-height:1;padding:0;flex:none}
+#clip{font-size:22px}
+#web,#think,#mic{font-size:16px}
 #web.on{background:#2f6fdb}
+#think.on{background:#8a5cf0}
 #mic.on{background:#e5484d}
 #t{flex:1;border:0;outline:0;font-size:16px;background:transparent;padding:8px 4px;min-width:0}
-#s{width:44px;height:44px;border-radius:50%;border:0;background:#1f1e1d;color:#fff;font-size:20px}
+#s{width:42px;height:42px;border-radius:50%;border:0;background:#1f1e1d;color:#fff;font-size:20px;flex:none}
 </style></head><body>
 <div id="log"><div id="hello"><img src="/logo.png" alt="">
 <h2 id="gh">วันนี้อยากคุยเรื่องอะไรดี</h2></div></div>
@@ -65,24 +80,20 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 <input type="file" id="fi" accept="image/*,.pdf,.txt,.md,.csv,.json,.py,.html,.js,.log" hidden>
 <input id="t" placeholder="คุยกับ BON..." autocomplete="off">
 <button type="button" id="web" title="ค้นเว็บ">🌐</button>
+<button type="button" id="think" title="แสดงความคิด">🧠</button>
 <button type="button" id="mic">🎤</button>
 <button id="s">↑</button></form></div>
 <script>
 const log=document.getElementById("log"),t=document.getElementById("t");
 const fi=document.getElementById("fi"),pv=document.getElementById("pv");
-let hist=[],pending=null,pfile=null,webOn=false;
+let hist=[],pending=null,pfile=null,webOn=false,thinkOn=false;
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 document.getElementById("gh").textContent=G[Math.floor(Math.random()*G.length)];
 const webBtn=document.getElementById("web");
 webBtn.onclick=()=>{webOn=!webOn;webBtn.classList.toggle("on",webOn);
 t.placeholder=webOn?"ค้นเว็บ: พิมพ์คำถาม...":"คุยกับ BON..."};
-function typeOut(el,s){return new Promise(res=>{
-const a=Array.from(s);let i=0;el.textContent="";
-const step=Math.max(1,Math.ceil(a.length/150));
-const id=setInterval(()=>{i+=step;
-el.textContent=a.slice(0,i).join("");
-log.scrollTop=log.scrollHeight;
-if(i>=a.length){clearInterval(id);res()}},20)})}
+const thBtn=document.getElementById("think");
+thBtn.onclick=()=>{thinkOn=!thinkOn;thBtn.classList.toggle("on",thinkOn)};
 function add(c,x,img,fn){const d=document.createElement("div");
 d.className="m "+c;
 if(img||fn){
@@ -91,12 +102,16 @@ if(fn){const q=document.createElement("div");q.className="fn";q.textContent="�
 const s=document.createElement("span");s.textContent=x;d.appendChild(s)}
 else{d.textContent=x}
 log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
-function addSrc(list){const d=document.createElement("div");d.className="src";
-const h=document.createElement("div");h.textContent="แหล่งที่มา";d.appendChild(h);
-list.forEach(s=>{const a=document.createElement("a");
-a.href=s.url;a.target="_blank";a.rel="noopener";
-a.textContent="🔗 "+(s.title||s.url);d.appendChild(a)});
-log.appendChild(d);log.scrollTop=log.scrollHeight}
+function newAns(){const d=document.createElement("div");d.className="m a";
+const live=document.createElement("div");live.className="live";
+const th=document.createElement("details");th.className="th";
+const sm=document.createElement("summary");sm.textContent="🧠 ความคิดของ BON";
+const tb=document.createElement("div");tb.className="tb";
+th.appendChild(sm);th.appendChild(tb);
+const an=document.createElement("div");an.className="an";
+d.appendChild(live);d.appendChild(th);d.appendChild(an);
+log.appendChild(d);log.scrollTop=log.scrollHeight;
+return {d:d,live:live,th:th,tb:tb,an:an}}
 function showPv(){pv.innerHTML="";
 if(!pending&&!pfile){pv.style.display="none";return}
 pv.style.display="flex";
@@ -165,16 +180,41 @@ const um={role:"user",content:x};
 if(img)um.img=img;
 if(fl)um.file=fl;
 hist.push(um);
-const w=add("a",webOn?"กำลังค้นเว็บ...":"...");
+const ui=newAns();
+let full="",gotAns=false,errd=false,srcs=0;
+ui.an.textContent=webOn?"กำลังค้นเว็บ...":"กำลังคิด...";
+const handle=ev=>{
+if(ev.t==="status"){if(!gotAns)ui.an.textContent=ev.m}
+else if(ev.t==="query"){ui.live.style.display="block";ui.live.innerHTML="";
+const q=document.createElement("div");q.className="lq";
+q.textContent="🌐 กำลังค้น: "+ev.q;ui.live.appendChild(q)}
+else if(ev.t==="source"){ui.live.style.display="block";
+const a=document.createElement("a");a.href=ev.url;a.target="_blank";a.rel="noopener";
+a.textContent="🔗 "+(ev.title||ev.url);ui.live.appendChild(a);srcs++}
+else if(ev.t==="think"){if(thinkOn){ui.th.style.display="block";ui.th.open=true;
+ui.tb.textContent+=ev.d;ui.tb.scrollTop=ui.tb.scrollHeight}}
+else if(ev.t==="ans"){if(!gotAns){gotAns=true;ui.an.textContent=""}
+full+=ev.d;ui.an.textContent=full.replace(/\*\*/g,"")}
+else if(ev.t==="err"){errd=true;ui.an.textContent=ev.m}
+else if(ev.t==="done"){ui.th.open=false;
+const q=ui.live.querySelector(".lq");if(q&&srcs)q.textContent="🌐 แหล่งที่มา"}
+log.scrollTop=log.scrollHeight};
 try{
 const r=await fetch("/chat",{method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({messages:hist.slice(-10),web:webOn})});
-const j=await r.json();
-await typeOut(w,j.answer);
-if(j.sources&&j.sources.length)addSrc(j.sources);
-if(r.ok)hist.push({role:"assistant",content:j.answer});
-}catch(err){w.textContent="เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง"}
+body:JSON.stringify({messages:hist.slice(-10),web:webOn,think:thinkOn})});
+if(!r.ok||!r.body){ui.an.textContent="ขออภัย ส่งข้อมูลไม่สำเร็จ ("+r.status+")"}
+else{
+const rd=r.body.getReader(),dec=new TextDecoder();let buf="";
+for(;;){const o=await rd.read();if(o.done)break;
+buf+=dec.decode(o.value,{stream:true});
+const lines=buf.split("\n");buf=lines.pop();
+for(const ln of lines){if(!ln.trim())continue;
+let v;try{v=JSON.parse(ln)}catch(err){continue}
+handle(v)}}
+if(!gotAns&&!errd)ui.an.textContent="ขออภัย ตอบไม่ได้ ลองใหม่อีกครั้ง"}
+}catch(err){ui.an.textContent="เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง"}
+if(full)hist.push({role:"assistant",content:full});
 log.scrollTop=log.scrollHeight;
 };
 </script></body></html>"""
@@ -182,7 +222,7 @@ log.scrollTop=log.scrollHeight;
 
 @app.route("/")
 def home():
-    return render_template_string(PAGE)
+    return Response(PAGE, mimetype="text/html")
 
 
 @app.route("/logo.png")
@@ -237,6 +277,26 @@ def web_search(q):
     return r.get("results", [])
 
 
+def open_stream(payload):
+    r = requests.post(
+        URL,
+        headers={"Authorization": "Bearer " + KEY},
+        json=payload,
+        stream=True,
+        timeout=100,
+    )
+    r.encoding = "utf-8"
+    return r
+
+
+def reply(gen):
+    return Response(
+        gen,
+        mimetype="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
@@ -245,9 +305,12 @@ def chat():
     k = (ip, day)
     usage[k] = usage.get(k, 0) + 1
     if usage[k] > LIMIT:
-        return jsonify(answer="ครบโควตาวันนี้แล้ว พรุ่งนี้มาใหม่นะ"), 429
+        return reply(ev(t="ans", d="ครบโควตาวันนี้แล้ว พรุ่งนี้มาใหม่นะ")
+                     + ev(t="done", sources=[]))
 
     body = request.json
+    want_web = bool(body.get("web"))
+    want_think = bool(body.get("think"))
     msgs = body.get("messages", [])[-10:]
     last_img = -1
     last_file = -1
@@ -280,53 +343,113 @@ def chat():
         else:
             out.append({"role": m["role"], "content": text})
 
-    system = SYSTEM
-    sources = []
-    if body.get("web"):
-        if not TAVILY_KEY:
-            system += (" ผู้ใช้เปิดโหมดค้นเว็บ แต่ระบบยังไม่ได้ตั้งค่า"
-                       " ให้บอกผู้ใช้ตรงๆ ว่าตอนนี้ค้นเว็บยังไม่ได้")
-        else:
-            wk = (ip, day, "web")
-            usage[wk] = usage.get(wk, 0) + 1
-            if usage[wk] > WEB_LIMIT:
-                system += (" ค้นเว็บครบโควตาวันนี้แล้ว ให้ตอบจากความรู้เดิม"
-                           " และบอกผู้ใช้ว่าวันนี้ค้นเว็บไม่ได้แล้ว")
-            else:
-                try:
-                    results = web_search(last_user_text)
-                except Exception:
-                    results = []
-                if results:
-                    lines = []
-                    for n, x in enumerate(results, 1):
-                        title = str(x.get("title", ""))[:120]
-                        link = str(x.get("url", ""))
-                        lines.append("[%d] %s\n%s\n%s" % (
-                            n, title, link,
-                            str(x.get("content", ""))[:400]))
-                        sources.append({"title": title, "url": link})
-                    system += (
-                        "\n\nวันนี้คือ " + day + "\nผลค้นเว็บ:\n"
-                        + "\n\n".join(lines)
-                        + "\n\nตอบโดยอ้างอิงผลค้นเว็บด้านบน"
-                        " ถ้าข้อมูลไม่พอให้บอกตรงๆ อย่าเดาหรือแต่งเพิ่ม")
-                else:
-                    system += (" ค้นเว็บไม่สำเร็จหรือไม่พบผล"
-                               " ให้บอกผู้ใช้ตรงๆ แล้วตอบเท่าที่รู้")
-
     model = VISION_MODEL if last_img >= 0 else MODEL
-    try:
-        r = requests.post(
-            URL,
-            headers={"Authorization": "Bearer " + KEY},
-            json={"model": model,
-                  "messages": [{"role": "system", "content": system}] + out},
-            timeout=100,
-        ).json()
-        ans = r["choices"][0]["message"]["content"]
-        ans = re.sub(r"<think>.*?</think>", "", ans, flags=re.S).strip()
-        return jsonify(answer=ans or "ขออภัย ตอบไม่ได้ ลองใหม่อีกครั้ง",
-                       sources=sources)
-    except Exception:
-        return jsonify(answer="ขออภัย ระบบขัดข้อง ลองใหม่อีกครั้ง"), 500
+
+    def gen():
+        system = (SYSTEM + " ตอนนี้คือวันที่และเวลาไทย " + now_th()
+                  + " ถ้าผู้ใช้ถามวันหรือเวลา ให้ตอบจากค่านี้เท่านั้น"
+                  " ห้ามใช้เครื่องหมาย ** หรือ markdown")
+        sources = []
+
+        if want_web:
+            if not TAVILY_KEY:
+                system += (" ผู้ใช้เปิดโหมดค้นเว็บ แต่ระบบยังไม่ได้ตั้งค่า"
+                           " ให้บอกผู้ใช้ตรงๆ ว่าตอนนี้ค้นเว็บยังไม่ได้")
+            else:
+                wk = (ip, day, "web")
+                usage[wk] = usage.get(wk, 0) + 1
+                if usage[wk] > WEB_LIMIT:
+                    system += (" ค้นเว็บครบโควตาวันนี้แล้ว ให้ตอบจากความรู้เดิม"
+                               " และบอกผู้ใช้ว่าวันนี้ค้นเว็บไม่ได้แล้ว")
+                else:
+                    yield ev(t="status", m="กำลังค้นเว็บ...")
+                    yield ev(t="query", q=last_user_text[:80])
+                    try:
+                        results = web_search(last_user_text)
+                    except Exception:
+                        results = []
+                    if results:
+                        lines = []
+                        for n, x in enumerate(results, 1):
+                            title = str(x.get("title", ""))[:120]
+                            link = str(x.get("url", ""))
+                            lines.append("[%d] %s\n%s\n%s" % (
+                                n, title, link,
+                                str(x.get("content", ""))[:400]))
+                            sources.append({"title": title, "url": link})
+                            yield ev(t="source", title=title, url=link)
+                        system += (
+                            "\n\nผลค้นเว็บ (บางหน้าอาจเก่า ถ้าวันที่ในผลค้น"
+                            "ไม่ตรงกับวันที่ปัจจุบัน ให้เชื่อวันที่ปัจจุบัน):\n"
+                            + "\n\n".join(lines)
+                            + "\n\nตอบโดยอ้างอิงผลค้นเว็บด้านบน"
+                            " ถ้าข้อมูลไม่พอให้บอกตรงๆ อย่าเดาหรือแต่งเพิ่ม")
+                    else:
+                        system += (" ค้นเว็บไม่สำเร็จหรือไม่พบผล"
+                                   " ให้บอกผู้ใช้ตรงๆ แล้วตอบเท่าที่รู้")
+
+        yield ev(t="status", m="กำลังคิด...")
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}] + out,
+            "stream": True,
+        }
+        if model == VISION_MODEL:
+            payload["reasoning_format"] = "parsed"
+        try:
+            r = open_stream(payload)
+            if r.status_code != 200 and "reasoning_format" in payload:
+                r.close()
+                payload.pop("reasoning_format")
+                r = open_stream(payload)
+            if r.status_code != 200:
+                r.close()
+                yield ev(t="err",
+                         m="ขออภัย ระบบขัดข้อง (%d) ลองใหม่อีกครั้ง"
+                         % r.status_code)
+                return
+            in_think = False
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data:"):
+                    continue
+                d = line[5:].strip()
+                if d == "[DONE]":
+                    break
+                try:
+                    j = json.loads(d)
+                except Exception:
+                    continue
+                delta = (j.get("choices") or [{}])[0].get("delta") or {}
+                rs = delta.get("reasoning")
+                if rs and want_think:
+                    yield ev(t="think", d=rs)
+                c = delta.get("content")
+                while c:
+                    if in_think:
+                        p = c.find("</think>")
+                        if p < 0:
+                            if want_think:
+                                yield ev(t="think", d=c)
+                            c = ""
+                        else:
+                            if p and want_think:
+                                yield ev(t="think", d=c[:p])
+                            c = c[p + 8:]
+                            in_think = False
+                    else:
+                        p = c.find("<think>")
+                        if p < 0:
+                            yield ev(t="ans", d=c)
+                            c = ""
+                        else:
+                            if p:
+                                yield ev(t="ans", d=c[:p])
+                            c = c[p + 7:]
+                            in_think = True
+            r.close()
+        except Exception:
+            yield ev(t="err", m="ขออภัย ระบบขัดข้อง ลองใหม่อีกครั้ง")
+            return
+        yield ev(t="done", sources=sources)
+
+    return reply(gen())
