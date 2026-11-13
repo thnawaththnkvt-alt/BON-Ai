@@ -10,11 +10,13 @@ except Exception:
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 6 * 1024 * 1024
 KEY = os.environ["GROQ_KEY"]
+TAVILY_KEY = os.environ.get("TAVILY_KEY", "")
 URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 VISION_MODEL = "qwen/qwen3.8-27b"
 SYSTEM = "คุณชื่อ BON จริงจัง ตอบตรงๆ ฉลาด สรุปเป็นข้อ สั้นแต่ได้ใจความ ตอบเป็นภาษาไทยเสมอ ยกเว้นผู้ใช้ขอภาษาอื่น"
-LIMIT = 50  # ข้อความต่อคนต่อวัน
+LIMIT = 100 # ข้อความต่อคนต่อวัน
+WEB_LIMIT = 15  # ครั้งค้นเว็บต่อคนต่อวัน
 FILE_CHARS = 5000  # ตัวอักษรจากไฟล์ที่ส่งให้บอท
 usage = {}
 
@@ -40,13 +42,17 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 .a{align-self:flex-start}
 .pic{display:block;max-width:100%;max-height:220px;border-radius:12px;margin-bottom:6px}
 .fn{font-size:13px;opacity:.7;margin-bottom:4px}
+.src{align-self:flex-start;font-size:13px;margin:-4px 0 10px;max-width:88%;line-height:1.6}
+.src a{display:block;color:#2f6fdb;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #pv{display:none;gap:8px;align-items:center;padding:0 16px 4px;font-size:14px}
 #pv img{height:56px;border-radius:10px}
 #pv button{border:0;background:#1f1e1d;color:#fff;border-radius:50%;width:24px;height:24px}
 #bar{padding:8px 12px calc(12px + env(safe-area-inset-bottom))}
 #f{display:flex;align-items:center;gap:6px;background:#fff;border-radius:28px;padding:8px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
-#clip{width:40px;height:40px;border-radius:50%;border:0;background:#efede8;color:#1f1e1d;font-size:24px;line-height:1}
-#mic{width:40px;height:40px;border-radius:50%;border:0;background:#efede8;font-size:18px;line-height:1}
+#clip,#web,#mic{width:40px;height:40px;border-radius:50%;border:0;background:#efede8;color:#1f1e1d;line-height:1}
+#clip{font-size:24px}
+#web,#mic{font-size:18px}
+#web.on{background:#2f6fdb}
 #mic.on{background:#e5484d}
 #t{flex:1;border:0;outline:0;font-size:16px;background:transparent;padding:8px 4px;min-width:0}
 #s{width:44px;height:44px;border-radius:50%;border:0;background:#1f1e1d;color:#fff;font-size:20px}
@@ -58,14 +64,18 @@ body{margin:0;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:fl
 <button type="button" id="clip">+</button>
 <input type="file" id="fi" accept="image/*,.pdf,.txt,.md,.csv,.json,.py,.html,.js,.log" hidden>
 <input id="t" placeholder="คุยกับ BON..." autocomplete="off">
+<button type="button" id="web" title="ค้นเว็บ">🌐</button>
 <button type="button" id="mic">🎤</button>
 <button id="s">↑</button></form></div>
 <script>
 const log=document.getElementById("log"),t=document.getElementById("t");
 const fi=document.getElementById("fi"),pv=document.getElementById("pv");
-let hist=[],pending=null,pfile=null;
+let hist=[],pending=null,pfile=null,webOn=false;
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 document.getElementById("gh").textContent=G[Math.floor(Math.random()*G.length)];
+const webBtn=document.getElementById("web");
+webBtn.onclick=()=>{webOn=!webOn;webBtn.classList.toggle("on",webOn);
+t.placeholder=webOn?"ค้นเว็บ: พิมพ์คำถาม...":"คุยกับ BON..."};
 function typeOut(el,s){return new Promise(res=>{
 const a=Array.from(s);let i=0;el.textContent="";
 const step=Math.max(1,Math.ceil(a.length/150));
@@ -81,6 +91,12 @@ if(fn){const q=document.createElement("div");q.className="fn";q.textContent="�
 const s=document.createElement("span");s.textContent=x;d.appendChild(s)}
 else{d.textContent=x}
 log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
+function addSrc(list){const d=document.createElement("div");d.className="src";
+const h=document.createElement("div");h.textContent="แหล่งที่มา";d.appendChild(h);
+list.forEach(s=>{const a=document.createElement("a");
+a.href=s.url;a.target="_blank";a.rel="noopener";
+a.textContent="🔗 "+(s.title||s.url);d.appendChild(a)});
+log.appendChild(d);log.scrollTop=log.scrollHeight}
 function showPv(){pv.innerHTML="";
 if(!pending&&!pfile){pv.style.display="none";return}
 pv.style.display="flex";
@@ -149,13 +165,14 @@ const um={role:"user",content:x};
 if(img)um.img=img;
 if(fl)um.file=fl;
 hist.push(um);
-const w=add("a","...");
+const w=add("a",webOn?"กำลังค้นเว็บ...":"...");
 try{
 const r=await fetch("/chat",{method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({messages:hist.slice(-10)})});
+body:JSON.stringify({messages:hist.slice(-10),web:webOn})});
 const j=await r.json();
 await typeOut(w,j.answer);
+if(j.sources&&j.sources.length)addSrc(j.sources);
 if(r.ok)hist.push({role:"assistant",content:j.answer});
 }catch(err){w.textContent="เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง"}
 log.scrollTop=log.scrollHeight;
@@ -209,6 +226,17 @@ def extract():
         return jsonify(error="อ่านไฟล์ PDF ไม่สำเร็จ"), 400
 
 
+def web_search(q):
+    r = requests.post(
+        "https://api.tavily.com/search",
+        headers={"Authorization": "Bearer " + TAVILY_KEY},
+        json={"query": q[:300], "max_results": 4,
+              "search_depth": "basic"},
+        timeout=25,
+    ).json()
+    return r.get("results", [])
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     ip = request.headers.get("X-Forwarded-For", request.remote_addr)
@@ -219,7 +247,8 @@ def chat():
     if usage[k] > LIMIT:
         return jsonify(answer="ครบโควตาวันนี้แล้ว พรุ่งนี้มาใหม่นะ"), 429
 
-    msgs = request.json.get("messages", [])[-10:]
+    body = request.json
+    msgs = body.get("messages", [])[-10:]
     last_img = -1
     last_file = -1
     for i, m in enumerate(msgs):
@@ -231,10 +260,13 @@ def chat():
             last_file = i
 
     out = []
+    last_user_text = ""
     for i, m in enumerate(msgs):
         if m.get("role") not in ("user", "assistant"):
             continue
         text = str(m.get("content", ""))[:1000]
+        if m["role"] == "user":
+            last_user_text = text
         if i == last_file and m["role"] == "user":
             fl = m["file"]
             text = ("ไฟล์: " + str(fl.get("name", ""))[:100] + "\n"
@@ -248,17 +280,53 @@ def chat():
         else:
             out.append({"role": m["role"], "content": text})
 
+    system = SYSTEM
+    sources = []
+    if body.get("web"):
+        if not TAVILY_KEY:
+            system += (" ผู้ใช้เปิดโหมดค้นเว็บ แต่ระบบยังไม่ได้ตั้งค่า"
+                       " ให้บอกผู้ใช้ตรงๆ ว่าตอนนี้ค้นเว็บยังไม่ได้")
+        else:
+            wk = (ip, day, "web")
+            usage[wk] = usage.get(wk, 0) + 1
+            if usage[wk] > WEB_LIMIT:
+                system += (" ค้นเว็บครบโควตาวันนี้แล้ว ให้ตอบจากความรู้เดิม"
+                           " และบอกผู้ใช้ว่าวันนี้ค้นเว็บไม่ได้แล้ว")
+            else:
+                try:
+                    results = web_search(last_user_text)
+                except Exception:
+                    results = []
+                if results:
+                    lines = []
+                    for n, x in enumerate(results, 1):
+                        title = str(x.get("title", ""))[:120]
+                        link = str(x.get("url", ""))
+                        lines.append("[%d] %s\n%s\n%s" % (
+                            n, title, link,
+                            str(x.get("content", ""))[:400]))
+                        sources.append({"title": title, "url": link})
+                    system += (
+                        "\n\nวันนี้คือ " + day + "\nผลค้นเว็บ:\n"
+                        + "\n\n".join(lines)
+                        + "\n\nตอบโดยอ้างอิงผลค้นเว็บด้านบน"
+                        " ถ้าข้อมูลไม่พอให้บอกตรงๆ อย่าเดาหรือแต่งเพิ่ม")
+                else:
+                    system += (" ค้นเว็บไม่สำเร็จหรือไม่พบผล"
+                               " ให้บอกผู้ใช้ตรงๆ แล้วตอบเท่าที่รู้")
+
     model = VISION_MODEL if last_img >= 0 else MODEL
     try:
         r = requests.post(
             URL,
             headers={"Authorization": "Bearer " + KEY},
             json={"model": model,
-                  "messages": [{"role": "system", "content": SYSTEM}] + out},
+                  "messages": [{"role": "system", "content": system}] + out},
             timeout=100,
         ).json()
         ans = r["choices"][0]["message"]["content"]
         ans = re.sub(r"<think>.*?</think>", "", ans, flags=re.S).strip()
-        return jsonify(answer=ans or "ขออภัย ตอบไม่ได้ ลองใหม่อีกครั้ง")
+        return jsonify(answer=ans or "ขออภัย ตอบไม่ได้ ลองใหม่อีกครั้ง",
+                       sources=sources)
     except Exception:
         return jsonify(answer="ขออภัย ระบบขัดข้อง ลองใหม่อีกครั้ง"), 500
