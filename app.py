@@ -310,7 +310,8 @@ def chat():
             return
         yield ev(t="done", sources=sources)
 
-    return reply(gen())const log=document.getElementById("log"),t=document.getElementById("t");
+    return reply(gen())
+    const log=document.getElementById("log"),t=document.getElementById("t");
 const fi=document.getElementById("fi"),pv=document.getElementById("pv");
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 const MODES=[
@@ -574,7 +575,8 @@ log.scrollTop=log.scrollHeight;
 
 if(!S.chats.length){S.chats.unshift({id:Date.now().toString(36),title:"แชทใหม่",msgs:[]});S.cur=S.chats[0].id;save()}
 if(!cur()){S.cur=S.chats[0].id}
-renderMsgs();renderList();renderModes();showSpk();setTitle();*{box-sizing:border-box}
+renderMsgs();renderList();renderModes();showSpk();setTitle();
+*{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden}
 body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#f9f8f6;color:#1f1e1d;font-family:sans-serif;display:flex;flex-direction:column}
 #hd{display:flex;align-items:center;gap:8px;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top));flex:none}
@@ -626,7 +628,8 @@ body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#f9f8f6;color:
 #dr label{display:block;margin:8px 0;font-size:14px}
 #vs{width:100%;padding:8px;margin:4px 0}
 #pt{width:100%}
-.sm{padding:9px 12px;border:1px solid #ccc;border-radius:12px;background:#fff;margin-top:6px}<!doctype html>
+.sm{padding:9px 12px;border:1px solid #ccc;border-radius:12px;background:#fff;margin-top:6px}
+<!doctype html>
 <html lang="th" translate="no"><head>
 <meta charset="utf-8">
 <meta name="google" content="notranslate">
