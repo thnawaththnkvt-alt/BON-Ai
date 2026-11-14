@@ -43,8 +43,7 @@
 <button class="sm" id="clr" type="button">ลบแชททั้งหมด</button>
 </div>
 <script src="/app.js?v=2"></script>
-</body></html>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+</body></html>*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden}
 body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#fff;color:#1c1c1e;font-family:sans-serif;display:flex;flex-direction:column}
 #hd{display:flex;align-items:center;gap:2px;padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top));flex:none}
@@ -103,17 +102,17 @@ body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#fff;color:#1c
 #dr label{display:block;margin:8px 0;font-size:14px}
 #vs{width:100%;padding:8px;margin:4px 0}
 #pt{width:100%}
-const $=id=>document.getElementById(id);
+.sm{padding:9px 12px;border:1px solid #ccc;border-radius:12px;background:#fff;margin-top:6px}const $=id=>document.getElementById(id);
 const log=$("log"),t=$("t"),pv=$("pv"),fi=$("fi"),go=$("go");
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 const MODES=[
-["serious"," จริงจัง","จริงจัง ตอบตรงๆ สรุปเป็นข้อสั้นๆ แต่ได้ใจความ"],
-["friend"," เพื่อนสนิท","เป็นเพื่อนสนิทที่คุยสบายๆ พูดจาเป็นกันเอง ขี้เล่นเล็กน้อย ตอบสั้นๆ ใช้ภาษาพูด"],
-["teacher"," ครูสอน","เป็นครูใจเย็น อธิบายเป็นขั้นตอน ใช้ตัวอย่างง่ายๆ และปิดท้ายด้วยคำถามชวนคิดสั้นๆ"],
-["coder"," นักเขียนโค้ด","เป็นโปรแกรมเมอร์รุ่นพี่ ช่วยเขียนและแก้โค้ด ให้โค้ดที่รันได้จริง อธิบายสั้นๆ"],
-["writer","นักเขียน","เป็นนักเขียนสร้างสรรค์ ใช้ภาษาสละสลวย มีจินตนาการ เสนอไอเดียหลายแบบ"],
-["coach"," โค้ชให้กำลังใจ","เป็นโค้ชใจดี รับฟังก่อน ถามชวนคิด ให้กำลังใจ และแนะนำขั้นตอนเล็กๆ ที่ทำได้จริง"],
-["custom","เขียนนิสัยเอง",""]
+["serious","🎯 จริงจัง","จริงจัง ตอบตรงๆ สรุปเป็นข้อสั้นๆ แต่ได้ใจความ"],
+["friend","😎 เพื่อนสนิท","เป็นเพื่อนสนิทที่คุยสบายๆ พูดจาเป็นกันเอง ขี้เล่นเล็กน้อย ตอบสั้นๆ ใช้ภาษาพูด"],
+["teacher","📚 ครูสอน","เป็นครูใจเย็น อธิบายเป็นขั้นตอน ใช้ตัวอย่างง่ายๆ และปิดท้ายด้วยคำถามชวนคิดสั้นๆ"],
+["coder","💻 นักเขียนโค้ด","เป็นโปรแกรมเมอร์รุ่นพี่ ช่วยเขียนและแก้โค้ด ให้โค้ดที่รันได้จริง อธิบายสั้นๆ"],
+["writer","✍️ นักเขียน","เป็นนักเขียนสร้างสรรค์ ใช้ภาษาสละสลวย มีจินตนาการ เสนอไอเดียหลายแบบ"],
+["coach","🌱 โค้ชให้กำลังใจ","เป็นโค้ชใจดี รับฟังก่อน ถามชวนคิด ให้กำลังใจ และแนะนำขั้นตอนเล็กๆ ที่ทำได้จริง"],
+["custom","🧩 เขียนนิสัยเอง",""]
 ];
 const LS="bon_v1";
 let S=null;
@@ -442,4 +441,3 @@ log.scrollTop=log.scrollHeight}
 if(!S.chats.length){S.chats.unshift({id:Date.now().toString(36),title:"แชทใหม่",msgs:[]});S.cur=S.chats[0].id;save()}
 if(!cur()){S.cur=S.chats[0].id}
 renderMsgs();renderList();renderModes();showSpk();setTitle();updateGo();grow();
-.sm{padding:9px 12px;border:1px solid #ccc;border-radius:12px;background:#fff;margin-top:6px}
