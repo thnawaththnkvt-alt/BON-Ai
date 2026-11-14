@@ -1,4 +1,43 @@
-<!doctype html>
+import os, io, re, time, json, base64, requests
+from datetime import datetime, timezone, timedelta
+from flask import Flask, request, jsonify, send_file, Response
+
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 6 * 1024 * 1024
+HERE = os.path.dirname(os.path.abspath(__file__))
+KEY = os.environ["GROQ_KEY"]
+TAVILY_KEY = os.environ.get("TAVILY_KEY", "")
+URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "openai/gpt-oss-120b"
+VISION_MODEL = "qwen/qwen3.8-27b"
+BASE = ("คุณชื่อ BON ตอบเป็นภาษาไทยเสมอ ยกเว้นผู้ใช้ขอภาษาอื่น"
+        " ตอบให้ตรงกับคำถามล่าสุดของผู้ใช้ก่อน ห้ามตอบเรื่องที่ไม่ได้ถาม"
+        " ถ้าคำถามกำกวมให้ถามกลับสั้นๆ ข้อเดียว"
+        " ถ้าไม่รู้ให้บอกว่าไม่รู้ ห้ามเดา")
+DEFAULT_PERSONA = "จริงจัง ตอบตรงๆ สรุปเป็นข้อสั้นๆ แต่ได้ใจความ"
+LIMIT = 50  # ข้อความต่อคนต่อวัน
+WEB_LIMIT = 15  # ครั้งค้นเว็บต่อคนต่อวัน
+FILE_CHARS = 5000  # ตัวอักษรจากไฟล์ที่ส่งให้บอท
+MAX_MSGS = 30  # จำนวนข้อความย้อนหลังสูงสุดที่รับจากหน้าเว็บ
+MEM_CHARS = 6000  # งบตัวอักษรความจำที่ส่งให้โมเดลต่อครั้ง
+usage = {}
+TH = timezone(timedelta(hours=7))
+
+
+def now_th():
+    return datetime.now(TH).strftime("%d/%m/%Y %H:%M")
+
+
+def ev(**k):
+    return json.dumps(k, ensure_ascii=False) + "\n"
+
+
+PAGE = r"""<!doctype html>
 <html lang="th" translate="no"><head>
 <meta charset="utf-8">
 <meta name="google" content="notranslate">
@@ -8,42 +47,8 @@
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#ffffff">
-<link rel="stylesheet" href="/style.css?v=2">
-</head><body>
-<div id="hd">
-<button id="menu" class="ib" type="button"></button>
-<div id="ttl">BON Ai</div>
-<button id="spk" class="ib" type="button"></button>
-<button id="newc" class="ib" type="button"></button>
-</div>
-<div id="log"></div>
-<div id="cmp"><div id="card">
-<div id="pv"></div>
-<textarea id="t" rows="1" placeholder="ส่งข้อความหรือกดไมค์เพื่อพูด"></textarea>
-<div id="row">
-<button type="button" id="think" class="chip"></button>
-<button type="button" id="web" class="chip"></button>
-<div class="grow"></div>
-<button type="button" id="plus" class="rb"></button>
-<button type="button" id="go" class="rb"></button>
-</div></div></div>
-<input type="file" id="fi" accept="image/*,.pdf,.txt,.md,.csv,.json,.py,.html,.js,.log" hidden>
-<div id="ov"></div>
-<div id="dr">
-<button id="nc" type="button">＋ แชทใหม่</button>
-<div class="sec">แชทของฉัน</div><div id="cl"></div>
-<div class="sec">โหมดของ BON</div><div id="ml"></div>
-<textarea id="cp" maxlength="600" placeholder="เขียนนิสัยของ BON เอง เช่น เป็นพี่ชายใจดี ชอบให้กำลังใจ"></textarea>
-<div class="sec">เสียง</div>
-<label><input type="checkbox" id="sp"> ให้ BON พูดตอบ</label>
-<select id="vs"></select>
-<label>ระดับเสียง (ต่ำ = ทุ้ม)<input type="range" id="pt" min="0.5" max="1.5" step="0.1"></label>
-<button class="sm" id="tv" type="button">ทดลองเสียง</button>
-<div class="sec">อื่นๆ</div>
-<button class="sm" id="clr" type="button">ลบแชททั้งหมด</button>
-</div>
-<script src="/app.js?v=2"></script>
-</body></html>*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden}
 body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#fff;color:#1c1c1e;font-family:sans-serif;display:flex;flex-direction:column}
 #hd{display:flex;align-items:center;gap:2px;padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top));flex:none}
@@ -102,7 +107,41 @@ body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#fff;color:#1c
 #dr label{display:block;margin:8px 0;font-size:14px}
 #vs{width:100%;padding:8px;margin:4px 0}
 #pt{width:100%}
-.sm{padding:9px 12px;border:1px solid #ccc;border-radius:12px;background:#fff;margin-top:6px}const $=id=>document.getElementById(id);
+.sm{padding:9px 12px;border:1px solid #ccc;border-radius:12px;background:#fff;margin-top:6px}
+</style></head><body>
+<div id="hd">
+<button id="menu" class="ib" type="button"></button>
+<div id="ttl">BON Ai</div>
+<button id="spk" class="ib" type="button"></button>
+<button id="newc" class="ib" type="button"></button>
+</div>
+<div id="log"></div>
+<div id="cmp"><div id="card">
+<div id="pv"></div>
+<textarea id="t" rows="1" placeholder="ส่งข้อความหรือกดไมค์เพื่อพูด"></textarea>
+<div id="row">
+<button type="button" id="think" class="chip"></button>
+<button type="button" id="web" class="chip"></button>
+<div class="grow"></div>
+<button type="button" id="plus" class="rb"></button>
+<button type="button" id="go" class="rb"></button>
+</div></div></div>
+<input type="file" id="fi" accept="image/*,.pdf,.txt,.md,.csv,.json,.py,.html,.js,.log" hidden>
+<div id="ov"></div>
+<div id="dr">
+<button id="nc" type="button">＋ แชทใหม่</button>
+<div class="sec">แชทของฉัน</div><div id="cl"></div>
+<div class="sec">โหมดของ BON</div><div id="ml"></div>
+<textarea id="cp" maxlength="600" placeholder="เขียนนิสัยของ BON เอง เช่น เป็นพี่ชายใจดี ชอบให้กำลังใจ"></textarea>
+<div class="sec">เสียง</div>
+<label><input type="checkbox" id="sp"> ให้ BON พูดตอบ</label>
+<select id="vs"></select>
+<label>ระดับเสียง (ต่ำ = ทุ้ม)<input type="range" id="pt" min="0.5" max="1.5" step="0.1"></label>
+<button class="sm" id="tv" type="button">ทดลองเสียง</button>
+<div class="sec">อื่นๆ</div>
+<button class="sm" id="clr" type="button">ลบแชททั้งหมด</button>
+</div>
+<script>const $=id=>document.getElementById(id);
 const log=$("log"),t=$("t"),pv=$("pv"),fi=$("fi"),go=$("go");
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 const MODES=[
@@ -224,8 +263,7 @@ log.innerHTML="";
 c.msgs.forEach((m,i)=>{
 if(m.role==="user"){addUser(m.content,null,m.had||null)}
 else{fillAns(newAns(),m,i===c.msgs.length-1)}});
-log.scrollTop=log.scrollHeight}
-function newChat(){
+log.scrollTop=log.scrollHeight}function newChat(){
 const c=cur();
 if(c&&!c.msgs.length){closeDr();return}
 const n={id:Date.now().toString(36),title:"แชทใหม่",msgs:[]};
@@ -352,9 +390,7 @@ rec.onend=()=>{listening=false;updateGo();t.focus()};
 rec.start()}
 go.onclick=()=>{
 if(listening){rec.stop();return}
-if(t.value.trim()||pending||pfile)send();else toggleDictation()};
-
-function send(){
+if(t.value.trim()||pending||pfile)send();else toggleDictation()};function send(){
 if(busy)return;
 let x=t.value.trim();if(!x&&!pending&&!pfile)return;
 if(!x)x=pfile?"สรุปไฟล์นี้":"อธิบายรูปนี้";
@@ -441,3 +477,263 @@ log.scrollTop=log.scrollHeight}
 if(!S.chats.length){S.chats.unshift({id:Date.now().toString(36),title:"แชทใหม่",msgs:[]});S.cur=S.chats[0].id;save()}
 if(!cur()){S.cur=S.chats[0].id}
 renderMsgs();renderList();renderModes();showSpk();setTitle();updateGo();grow();
+</script></body></html>"""@app.route("/")
+def home():
+    resp = Response(PAGE, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/logo.png")
+def logo():
+    return send_file(os.path.join(HERE, "logo_bon.png"))
+
+
+@app.route("/manifest.json")
+def manifest():
+    return jsonify(
+        name="BON Ai",
+        short_name="BON",
+        start_url="/",
+        display="standalone",
+        background_color="#ffffff",
+        theme_color="#ffffff",
+        icons=[{"src": "/logo.png", "sizes": "512x512",
+                "type": "image/png"}],
+    )
+
+
+@app.route("/extract", methods=["POST"])
+def extract():
+    if PdfReader is None:
+        return jsonify(error="เซิร์ฟเวอร์ยังไม่ได้ติดตั้ง pypdf"), 500
+    try:
+        data = request.json.get("data", "")
+        raw = base64.b64decode(data.split(",", 1)[1])
+        reader = PdfReader(io.BytesIO(raw))
+        parts = []
+        for p in reader.pages[:20]:
+            parts.append(p.extract_text() or "")
+            if sum(len(s) for s in parts) > 8000:
+                break
+        text = "\n".join(parts).strip()[:8000]
+        if not text:
+            return jsonify(
+                error="อ่านข้อความจากไฟล์นี้ไม่ได้ (อาจเป็นไฟล์สแกน)"), 400
+        return jsonify(text=text)
+    except Exception:
+        return jsonify(error="อ่านไฟล์ PDF ไม่สำเร็จ"), 400
+
+
+def web_search(q):
+    r = requests.post(
+        "https://api.tavily.com/search",
+        headers={"Authorization": "Bearer " + TAVILY_KEY},
+        json={"query": q[:300], "max_results": 4,
+              "search_depth": "basic"},
+        timeout=25,
+    ).json()
+    return r.get("results", [])
+
+
+def open_stream(payload):
+    r = requests.post(
+        URL,
+        headers={"Authorization": "Bearer " + KEY},
+        json=payload,
+        stream=True,
+        timeout=100,
+    )
+    r.encoding = "utf-8"
+    return r
+
+
+def reply(gen):
+    return Response(
+        gen,
+        mimetype="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def msg_len(m):
+    c = m["content"]
+    if isinstance(c, str):
+        return len(c)
+    return sum(len(p.get("text", "")) for p in c if p.get("type") == "text")
+
+
+def trim(out):
+    kept = []
+    total = 0
+    for m in reversed(out):
+        n = msg_len(m)
+        if kept and total + n > MEM_CHARS:
+            break
+        kept.append(m)
+        total += n
+    kept.reverse()
+    while len(kept) > 1 and kept[0]["role"] != "user":
+        kept.pop(0)
+    return kept
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    ip = ip.split(",")[0].strip()
+    day = time.strftime("%Y-%m-%d")
+    k = (ip, day)
+    usage[k] = usage.get(k, 0) + 1
+    if usage[k] > LIMIT:
+        return reply(ev(t="ans", d="ครบโควตาวันนี้แล้ว พรุ่งนี้มาใหม่นะ")
+                     + ev(t="done", sources=[]))
+
+    body = request.json
+    want_web = bool(body.get("web"))
+    want_think = bool(body.get("think"))
+    persona = str(body.get("persona", "")).strip()[:600] or DEFAULT_PERSONA
+    msgs = body.get("messages", [])[-MAX_MSGS:]
+    last_img = -1
+    last_file = -1
+    for i, m in enumerate(msgs):
+        img = m.get("img")
+        if (isinstance(img, str) and img.startswith("data:image/")
+                and len(img) < 3500000):
+            last_img = i
+        if isinstance(m.get("file"), dict):
+            last_file = i
+
+    out = []
+    last_user_text = ""
+    for i, m in enumerate(msgs):
+        if m.get("role") not in ("user", "assistant"):
+            continue
+        text = str(m.get("content", ""))[:1200]
+        if m["role"] == "user":
+            last_user_text = text
+        if i == last_file and m["role"] == "user":
+            fl = m["file"]
+            text = ("ไฟล์: " + str(fl.get("name", ""))[:100] + "\n"
+                    + str(fl.get("text", ""))[:FILE_CHARS]
+                    + "\n\nคำถาม: " + text)
+        if i == last_img and m["role"] == "user":
+            out.append({"role": "user", "content": [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": m["img"]}},
+            ]})
+        else:
+            out.append({"role": m["role"], "content": text})
+    out = trim(out)
+
+    model = VISION_MODEL if last_img >= 0 else MODEL
+
+    def gen():
+        system = (BASE + " บุคลิกและสไตล์การตอบ: " + persona
+                  + " ตอนนี้คือวันที่และเวลาไทย " + now_th()
+                  + " ถ้าผู้ใช้ถามวันหรือเวลา ให้ตอบจากค่านี้เท่านั้น"
+                  " ห้ามใช้เครื่องหมาย ** หรือ markdown ใช้ข้อความธรรมดา")
+        sources = []
+
+        if want_web:
+            if not TAVILY_KEY:
+                system += (" ผู้ใช้เปิดโหมดค้นเว็บ แต่ระบบยังไม่ได้ตั้งค่า"
+                           " ให้บอกผู้ใช้ตรงๆ ว่าตอนนี้ค้นเว็บยังไม่ได้")
+            else:
+                wk = (ip, day, "web")
+                usage[wk] = usage.get(wk, 0) + 1
+                if usage[wk] > WEB_LIMIT:
+                    system += (" ค้นเว็บครบโควตาวันนี้แล้ว ให้ตอบจากความรู้เดิม"
+                               " และบอกผู้ใช้ว่าวันนี้ค้นเว็บไม่ได้แล้ว")
+                else:
+                    yield ev(t="status", m="กำลังค้นเว็บ...")
+                    yield ev(t="query", q=last_user_text[:80])
+                    try:
+                        results = web_search(last_user_text)
+                    except Exception:
+                        results = []
+                    if results:
+                        lines = []
+                        for n, x in enumerate(results, 1):
+                            title = str(x.get("title", ""))[:120]
+                            link = str(x.get("url", ""))
+                            lines.append("[%d] %s\n%s\n%s" % (
+                                n, title, link,
+                                str(x.get("content", ""))[:400]))
+                            sources.append({"title": title, "url": link})
+                            yield ev(t="source", title=title, url=link)
+                        system += (
+                            "\n\nผลค้นเว็บ (บางหน้าอาจเก่า ถ้าวันที่ในผลค้น"
+                            "ไม่ตรงกับวันที่ปัจจุบัน ให้เชื่อวันที่ปัจจุบัน):\n"
+                            + "\n\n".join(lines)
+                            + "\n\nตอบโดยอ้างอิงผลค้นเว็บด้านบน"
+                            " ถ้าข้อมูลไม่พอให้บอกตรงๆ อย่าเดาหรือแต่งเพิ่ม")
+                    else:
+                        system += (" ค้นเว็บไม่สำเร็จหรือไม่พบผล"
+                                   " ให้บอกผู้ใช้ตรงๆ แล้วตอบเท่าที่รู้")
+
+        yield ev(t="status", m="กำลังคิด...")
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}] + out,
+            "stream": True,
+        }
+        if model == VISION_MODEL:
+            payload["reasoning_format"] = "parsed"
+        try:
+            r = open_stream(payload)
+            if r.status_code != 200 and "reasoning_format" in payload:
+                r.close()
+                payload.pop("reasoning_format")
+                r = open_stream(payload)
+            if r.status_code != 200:
+                code = r.status_code
+                r.close()
+                yield ev(t="err",
+                         m="ขออภัย ระบบขัดข้อง (%d) ลองใหม่อีกครั้ง" % code)
+                return
+            in_think = False
+            for line in r.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data:"):
+                    continue
+                d = line[5:].strip()
+                if d == "[DONE]":
+                    break
+                try:
+                    j = json.loads(d)
+                except Exception:
+                    continue
+                delta = (j.get("choices") or [{}])[0].get("delta") or {}
+                rs = delta.get("reasoning")
+                if rs and want_think:
+                    yield ev(t="think", d=rs)
+                c = delta.get("content")
+                while c:
+                    if in_think:
+                        p = c.find("</think>")
+                        if p < 0:
+                            if want_think:
+                                yield ev(t="think", d=c)
+                            c = ""
+                        else:
+                            if p and want_think:
+                                yield ev(t="think", d=c[:p])
+                            c = c[p + 8:]
+                            in_think = False
+                    else:
+                        p = c.find("<think>")
+                        if p < 0:
+                            yield ev(t="ans", d=c)
+                            c = ""
+                        else:
+                            if p:
+                                yield ev(t="ans", d=c[:p])
+                            c = c[p + 7:]
+                            in_think = True
+            r.close()
+        except Exception:
+            yield ev(t="err", m="ขออภัย ระบบขัดข้อง ลองใหม่อีกครั้ง")
+            return
+        yield ev(t="done", sources=sources)
+
+    return reply(gen())
