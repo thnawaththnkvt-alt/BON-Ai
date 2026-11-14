@@ -141,7 +141,8 @@ body{position:fixed;top:0;left:0;right:0;height:100dvh;background:#fff;color:#1c
 <div class="sec">อื่นๆ</div>
 <button class="sm" id="clr" type="button">ลบแชททั้งหมด</button>
 </div>
-<script>const $=id=>document.getElementById(id);
+<script>
+const $=id=>document.getElementById(id);
 const log=$("log"),t=$("t"),pv=$("pv"),fi=$("fi"),go=$("go");
 const G=["วันนี้อยากคุยเรื่องอะไรดี","มีอะไรให้ BON ช่วยไหม","ว่างๆ มาคุยกันหน่อย","ถามมาได้เลย","มีอะไรน่าสนใจบ้าง"];
 const MODES=[
@@ -263,7 +264,8 @@ log.innerHTML="";
 c.msgs.forEach((m,i)=>{
 if(m.role==="user"){addUser(m.content,null,m.had||null)}
 else{fillAns(newAns(),m,i===c.msgs.length-1)}});
-log.scrollTop=log.scrollHeight}function newChat(){
+log.scrollTop=log.scrollHeight}
+function newChat(){
 const c=cur();
 if(c&&!c.msgs.length){closeDr();return}
 const n={id:Date.now().toString(36),title:"แชทใหม่",msgs:[]};
@@ -390,7 +392,8 @@ rec.onend=()=>{listening=false;updateGo();t.focus()};
 rec.start()}
 go.onclick=()=>{
 if(listening){rec.stop();return}
-if(t.value.trim()||pending||pfile)send();else toggleDictation()};function send(){
+if(t.value.trim()||pending||pfile)send();else toggleDictation()};
+function send(){
 if(busy)return;
 let x=t.value.trim();if(!x&&!pending&&!pfile)return;
 if(!x)x=pfile?"สรุปไฟล์นี้":"อธิบายรูปนี้";
@@ -477,7 +480,8 @@ log.scrollTop=log.scrollHeight}
 if(!S.chats.length){S.chats.unshift({id:Date.now().toString(36),title:"แชทใหม่",msgs:[]});S.cur=S.chats[0].id;save()}
 if(!cur()){S.cur=S.chats[0].id}
 renderMsgs();renderList();renderModes();showSpk();setTitle();updateGo();grow();
-</script></body></html>"""@app.route("/")
+</script></body></html>"""
+@app.route("/")
 def home():
     resp = Response(PAGE, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache"
